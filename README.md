@@ -2,7 +2,8 @@
 A python script based on [SecuraBV script](https://github.com/SecuraBV/CVE-2020-1472). 
 
 Demonstrates that CVE-2020-1472 can be done via RPC/SMB, and not only over RPC/TCP.
-Additionaly, there is a random byte in the final client challange & client credential - to test against trivial IDS signatures
+
+Additionaly, there is a random byte in the final client challange & client credential - to test against trivial IDS signatures.
 The RPC/SMB scan runs by default. Depending on the target server, some may require a valid authenticated user to get permission to the netlogon pipe.
 
 # Execution

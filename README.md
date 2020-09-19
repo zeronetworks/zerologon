@@ -8,7 +8,7 @@ The RPC/SMB scan runs by default. Depending on the target server, some may requi
 
 # Execution
 ```python
-zerologon_test.py [-h] [-u] [-p] [-t] dc_name dc_ip
+usage: zerologon_test.py [-h] [-u] [-d] [-p] [-t] [-pp] dc_name dc_ip
 
 Perform zerologon test over RPC/TCP or RPC/SMB
 
@@ -20,7 +20,9 @@ optional arguments:
   -h, --help, /?, /h, /help
                         show this help message and exit
   -u , --user           authenticated domain user,may be required for SMB
+  -d , --domain         domain name, required only when authentication over SMB
   -p , --pass           authenticated domain user's password, may be required for SMB
   -t , --type           rpc or smb scan. choices: [smb, rpc], (default: 'smb').
+  -pp, --privacy        if exists adds packet privacy
 
 ```
